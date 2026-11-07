@@ -22,6 +22,13 @@ public class DoorLogicTest
 		return new WorldPoint(x, y, 0);
 	}
 
+	/** Doorway C's leaves: on the west edge of tiles (3550, 9700) and (3550, 9701). */
+	private static final WorldPoint DOOR = at(3550, 9700);
+	/** The other door C, at the far end of the passage: north edge of (3556, 9710) and (3557, 9710). */
+	private static final WorldPoint FAR_DOOR = at(3556, 9710);
+	/** Doorway F, somewhere else. */
+	private static final WorldPoint OTHER = at(3560, 9690);
+
 	/** Doorway C: two leaves on the west edge of tiles (3550, 9700) and (3550, 9701). */
 	private static DoorTracker trackerWithWestDoor(BarrowsDoors.State state)
 	{
@@ -61,9 +68,9 @@ public class DoorLogicTest
 	@Test
 	public void highlightsUnlockedOnly()
 	{
-		assertTrue(trackerWithWestDoor(UNLOCKED).shouldHighlight(2));
-		assertFalse(trackerWithWestDoor(LOCKED).shouldHighlight(2));
-		assertFalse(new DoorTracker().shouldHighlight(2));
+		assertTrue(trackerWithWestDoor(UNLOCKED).shouldHighlight(2, DOOR, true));
+		assertFalse(trackerWithWestDoor(LOCKED).shouldHighlight(2, DOOR, true));
+		assertFalse(new DoorTracker().shouldHighlight(2, DOOR, true));
 	}
 
 	@Test
@@ -72,10 +79,10 @@ public class DoorLogicTest
 		DoorTracker tracker = trackerWithWestDoor(UNLOCKED);
 		assertEquals(2, tracker.moved(at(3549, 9700), at(3550, 9700)));
 		assertTrue(tracker.isUsed(2));
-		assertFalse(tracker.shouldHighlight(2));
+		assertFalse(tracker.shouldHighlight(2, DOOR, true));
 		// It stays off after the door closes behind you and its leaves load again
 		tracker.leaf(2, at(3550, 9700), WEST, UNLOCKED);
-		assertFalse(tracker.shouldHighlight(2));
+		assertFalse(tracker.shouldHighlight(2, DOOR, true));
 	}
 
 	@Test
@@ -101,7 +108,7 @@ public class DoorLogicTest
 		assertEquals(-1, tracker.moved(null, at(3550, 9700)));
 		// Too far to be one tick's move through the door: a teleport or a scene change
 		assertEquals(-1, tracker.moved(at(3540, 9700), at(3560, 9700)));
-		assertTrue(tracker.shouldHighlight(2));
+		assertTrue(tracker.shouldHighlight(2, DOOR, true));
 	}
 
 	@Test
@@ -125,38 +132,38 @@ public class DoorLogicTest
 	public void openingTheDoorYouClicked()
 	{
 		DoorTracker tracker = trackerWithWestDoor(UNLOCKED);
-		tracker.clickedOpen(2, 100);
-		assertTrue(tracker.leafGone(2, 104));
-		assertFalse(tracker.shouldHighlight(2));
+		tracker.clickedOpen(2, DOOR, 100);
+		assertTrue(tracker.leafGone(2, DOOR, 104));
+		assertFalse(tracker.shouldHighlight(2, DOOR, true));
 	}
 
 	@Test
 	public void someoneElsesDoorSwinging()
 	{
 		DoorTracker tracker = trackerWithWestDoor(UNLOCKED);
-		tracker.leaf(5, at(3560, 9690), NORTH, UNLOCKED);
+		tracker.leaf(5, OTHER, NORTH, UNLOCKED);
 		// Not the door you clicked
-		tracker.clickedOpen(5, 100);
-		assertFalse(tracker.leafGone(2, 101));
+		tracker.clickedOpen(5, OTHER, 100);
+		assertFalse(tracker.leafGone(2, DOOR, 101));
 		// You clicked it, then walked off somewhere else
-		tracker.clickedOpen(2, 102);
+		tracker.clickedOpen(2, DOOR, 102);
 		tracker.clickedElsewhere();
-		assertFalse(tracker.leafGone(2, 103));
+		assertFalse(tracker.leafGone(2, DOOR, 103));
 		// You clicked it ages ago
-		tracker.clickedOpen(2, 110);
-		assertFalse(tracker.leafGone(2, 110 + DoorTracker.OPEN_CLICK_TICKS + 1));
-		assertTrue(tracker.shouldHighlight(2));
-		assertTrue(tracker.shouldHighlight(5));
+		tracker.clickedOpen(2, DOOR, 110);
+		assertFalse(tracker.leafGone(2, DOOR, 110 + DoorTracker.OPEN_CLICK_TICKS + 1));
+		assertTrue(tracker.shouldHighlight(2, DOOR, true));
+		assertTrue(tracker.shouldHighlight(5, OTHER, true));
 	}
 
 	@Test
 	public void clickingALockedDoorDoesNothing()
 	{
 		DoorTracker tracker = trackerWithWestDoor(LOCKED);
-		tracker.clickedOpen(2, 100);
+		tracker.clickedOpen(2, DOOR, 100);
 		// A locked door never swings, so there's no leafGone, and it was never highlighted
 		assertFalse(tracker.isUsed(2));
-		assertFalse(tracker.shouldHighlight(2));
+		assertFalse(tracker.shouldHighlight(2, DOOR, true));
 	}
 
 	@Test
@@ -164,11 +171,11 @@ public class DoorLogicTest
 	{
 		DoorTracker tracker = trackerWithWestDoor(UNLOCKED);
 		tracker.moved(at(3549, 9700), at(3550, 9700));
-		assertFalse(tracker.shouldHighlight(2));
+		assertFalse(tracker.shouldHighlight(2, DOOR, true));
 		tracker.state(2, LOCKED);
 		assertFalse(tracker.isUsed(2));
 		tracker.state(2, UNLOCKED);
-		assertTrue(tracker.shouldHighlight(2));
+		assertTrue(tracker.shouldHighlight(2, DOOR, true));
 	}
 
 	@Test
@@ -177,11 +184,77 @@ public class DoorLogicTest
 		DoorTracker tracker = trackerWithWestDoor(UNLOCKED);
 		tracker.moved(at(3549, 9700), at(3550, 9700));
 		tracker.clearRun();
-		assertTrue(tracker.shouldHighlight(2));
+		assertTrue(tracker.shouldHighlight(2, DOOR, true));
 		// The leaves are still known, so walking through again still counts
 		assertEquals(2, tracker.moved(at(3550, 9700), at(3549, 9700)));
 		tracker.clear();
-		assertFalse(tracker.shouldHighlight(2));
+		assertFalse(tracker.shouldHighlight(2, DOOR, true));
 		assertEquals(-1, tracker.moved(at(3549, 9700), at(3550, 9700)));
+	}
+
+	/** Doorway C with both of its doors: the west one, and the north one at the far end of the passage. */
+	private static DoorTracker trackerWithBothDoorsC()
+	{
+		DoorTracker tracker = trackerWithWestDoor(UNLOCKED);
+		tracker.leaf(2, FAR_DOOR, NORTH, UNLOCKED);
+		tracker.leaf(2, at(3557, 9710), NORTH, UNLOCKED);
+		return tracker;
+	}
+
+	@Test
+	public void walkingThroughOneDoorLeavesTheFarDoorLit()
+	{
+		DoorTracker tracker = trackerWithBothDoorsC();
+		assertEquals(2, tracker.moved(at(3549, 9700), at(3550, 9700)));
+		// Both leaves of the door you used go dark
+		assertFalse(tracker.shouldHighlight(2, DOOR, true));
+		assertFalse(tracker.shouldHighlight(2, at(3550, 9701), true));
+		assertTrue(tracker.isUsed(2, at(3550, 9701)));
+		// The far door with the same letter stays lit until you go through it too
+		assertTrue(tracker.shouldHighlight(2, FAR_DOOR, true));
+		assertFalse(tracker.isUsed(2, FAR_DOOR));
+		assertEquals(2, tracker.moved(at(3557, 9710), at(3557, 9711)));
+		assertFalse(tracker.shouldHighlight(2, FAR_DOOR, true));
+		assertFalse(tracker.shouldHighlight(2, at(3557, 9710), true));
+	}
+
+	@Test
+	public void perLetterDropsEveryDoorWithTheLetter()
+	{
+		DoorTracker tracker = trackerWithBothDoorsC();
+		assertTrue(tracker.shouldHighlight(2, FAR_DOOR, false));
+		tracker.moved(at(3549, 9700), at(3550, 9700));
+		assertFalse(tracker.shouldHighlight(2, DOOR, false));
+		assertFalse(tracker.shouldHighlight(2, FAR_DOOR, false));
+		// The setting only changes what's drawn, so switching it back brings the far door back
+		assertTrue(tracker.shouldHighlight(2, FAR_DOOR, true));
+	}
+
+	@Test
+	public void openingOneDoorLeavesTheFarDoorLit()
+	{
+		DoorTracker tracker = trackerWithBothDoorsC();
+		tracker.clickedOpen(2, at(3550, 9701), 100);
+		// Someone else swings the far door C first: not the one you clicked
+		assertFalse(tracker.leafGone(2, FAR_DOOR, 101));
+		assertTrue(tracker.shouldHighlight(2, FAR_DOOR, true));
+		// Your door swings
+		assertTrue(tracker.leafGone(2, DOOR, 102));
+		assertFalse(tracker.shouldHighlight(2, at(3550, 9701), true));
+		assertTrue(tracker.shouldHighlight(2, FAR_DOOR, true));
+	}
+
+	@Test
+	public void lockedOrNewRunForgetsEveryDoor()
+	{
+		DoorTracker tracker = trackerWithBothDoorsC();
+		tracker.moved(at(3549, 9700), at(3550, 9700));
+		tracker.state(2, LOCKED);
+		tracker.state(2, UNLOCKED);
+		assertTrue(tracker.shouldHighlight(2, DOOR, true));
+		tracker.moved(at(3549, 9700), at(3550, 9700));
+		tracker.clearRun();
+		assertTrue(tracker.shouldHighlight(2, DOOR, true));
+		assertTrue(tracker.shouldHighlight(2, DOOR, false));
 	}
 }
