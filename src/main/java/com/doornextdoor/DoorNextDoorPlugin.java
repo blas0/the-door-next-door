@@ -186,7 +186,7 @@ public class DoorNextDoorPlugin extends Plugin
 		}
 		leaves.remove(leaf.getWorldLocation(), leaf);
 		// The door you clicked Open on swung open: its leaves leave the scene while it stands open
-		if (settleTicks == 0 && tracker.leafGone(doorway, client.getTickCount()))
+		if (settleTicks == 0 && tracker.leafGone(doorway, leaf.getWorldLocation(), client.getTickCount()))
 		{
 			log.debug("Opened door {}", BarrowsDoors.name(doorway));
 		}
@@ -239,10 +239,11 @@ public class DoorNextDoorPlugin extends Plugin
 		{
 			return;
 		}
-		int doorway = "Open".equals(event.getMenuOption()) ? clickedDoorway(event) : -1;
+		WorldPoint clicked = clickedTile(event);
+		int doorway = "Open".equals(event.getMenuOption()) ? clickedDoorway(event, clicked) : -1;
 		if (doorway >= 0)
 		{
-			tracker.clickedOpen(doorway, client.getTickCount());
+			tracker.clickedOpen(doorway, clicked, client.getTickCount());
 		}
 		else
 		{
@@ -261,15 +262,20 @@ public class DoorNextDoorPlugin extends Plugin
 			|| name.startsWith("PLAYER_");
 	}
 
-	private int clickedDoorway(MenuOptionClicked event)
+	/** For object clicks, param0 and param1 are the object's scene tile. */
+	private WorldPoint clickedTile(MenuOptionClicked event)
+	{
+		WorldView wv = client.getTopLevelWorldView();
+		return WorldPoint.fromScene(wv, event.getParam0(), event.getParam1(), wv.getPlane());
+	}
+
+	private int clickedDoorway(MenuOptionClicked event, WorldPoint clicked)
 	{
 		int doorway = BarrowsDoors.doorway(event.getId());
 		if (doorway >= 0)
 		{
 			return doorway;
 		}
-		WorldView wv = client.getTopLevelWorldView();
-		WorldPoint clicked = WorldPoint.fromScene(wv, event.getParam0(), event.getParam1(), wv.getPlane());
 		for (Map.Entry<WorldPoint, WallObject> leaf : leaves.entrySet())
 		{
 			if (leaf.getKey().getPlane() == clicked.getPlane() && leaf.getKey().distanceTo2D(clicked) <= CLICK_MATCH_DISTANCE)

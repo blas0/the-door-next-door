@@ -11,6 +11,10 @@ still lit are the ones you haven't tried.
 - A door's outline goes away once you go through it: when the door you clicked
   Open on swings open, or when you step across it. It stays off for the rest
   of the trip, even after the door shuts behind you.
+- Doors are lettered, and a letter can be on more than one door, such as both
+  ends of a passage. Going through one only drops that door; the others with
+  its letter stay lit until you use them too. Turn off "Each door on its own"
+  to drop every door with the letter at once.
 - Every door lights up again when you're back above ground or loot the chest.
 
 Each player gets their own door layout, so what you see is your own, and other

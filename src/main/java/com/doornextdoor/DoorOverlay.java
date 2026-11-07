@@ -40,9 +40,10 @@ class DoorOverlay extends Overlay
 		}
 		DoorTracker tracker = plugin.getTracker();
 		Color color = config.doorColor();
+		boolean eachDoor = config.eachDoorSeparately();
 		for (WallObject leaf : plugin.getLeaves())
 		{
-			if (!tracker.shouldHighlight(BarrowsDoors.doorway(leaf.getId())))
+			if (!tracker.shouldHighlight(BarrowsDoors.doorway(leaf.getId()), leaf.getWorldLocation(), eachDoor))
 			{
 				continue;
 			}

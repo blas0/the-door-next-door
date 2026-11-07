@@ -1,7 +1,9 @@
 package com.doornextdoor;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import javax.annotation.Nullable;
 import net.runelite.api.WallObject;
 import net.runelite.api.coords.WorldPoint;
@@ -9,6 +11,10 @@ import net.runelite.api.coords.WorldPoint;
 /**
  * What the plugin knows about each tunnel doorway this run: where its leaves are, whether it's unlocked for
  * you, and whether you've already been through it. No client calls, so it can be unit tested.
+ *
+ * <p>A doorway is a letter, A to P, and one letter can be more than one door: every door with that letter
+ * shares the varbit that locks it. So use is kept two ways: per letter, and per door (the tiles of the leaves
+ * you went through). The plugin's setting picks which one the highlight follows.
  */
 final class DoorTracker
 {
@@ -16,18 +22,51 @@ final class DoorTracker
 	static final int OPEN_CLICK_TICKS = 20;
 	/** Tiles from a door's edge that still count as passing through it. Running covers 2 tiles a tick. */
 	static final double CROSS_REACH = 2.5;
+	/** Tiles between a door's two leaves, and between a leaf and where you clicked to open it. */
+	static final int SAME_DOOR = 1;
+	/** A swinging leaf this close to the tile you clicked Open on is the door you clicked. */
+	static final int CLICK_REACH = 2;
 
 	private static final class Doorway
 	{
 		/** Leaf tile to wall orientation (WallObject bitfield: 1 west, 2 north, 4 east, 8 south). */
 		final Map<WorldPoint, Integer> leaves = new HashMap<>();
 		BarrowsDoors.State state = BarrowsDoors.State.OTHER;
+		/** You went through a door with this letter. */
 		boolean used;
+		/** Leaf tiles of the doors with this letter you went through. */
+		final Set<WorldPoint> usedAt = new HashSet<>();
+
+		void use(WorldPoint tile)
+		{
+			used = true;
+			usedAt.add(tile);
+		}
+
+		void forget()
+		{
+			used = false;
+			usedAt.clear();
+		}
+
+		boolean usedNear(WorldPoint tile)
+		{
+			for (WorldPoint used : usedAt)
+			{
+				if (near(used, tile, SAME_DOOR))
+				{
+					return true;
+				}
+			}
+			return false;
+		}
 	}
 
 	private final Doorway[] doorways = new Doorway[BarrowsDoors.DOORWAYS];
 	private int pendingOpen = -1;
 	private int pendingOpenTick;
+	@Nullable
+	private WorldPoint pendingOpenTile;
 
 	DoorTracker()
 	{
@@ -50,7 +89,7 @@ final class DoorTracker
 		if (state == BarrowsDoors.State.LOCKED)
 		{
 			// A door you went through that's now locked means the layout changed: a new run
-			d.used = false;
+			d.forget();
 		}
 		d.state = state;
 	}
@@ -60,22 +99,39 @@ final class DoorTracker
 		return doorways[doorway].state;
 	}
 
-	/** Unlocked for you and you haven't been through it yet this run. */
-	boolean shouldHighlight(int doorway)
+	/**
+	 * Unlocked for you and you haven't been through it yet this run.
+	 *
+	 * @param leaf the tile of the leaf being drawn
+	 * @param eachDoor true to count only the door you went through, false for every door with its letter
+	 */
+	boolean shouldHighlight(int doorway, WorldPoint leaf, boolean eachDoor)
 	{
 		Doorway d = doorways[doorway];
-		return d.state == BarrowsDoors.State.UNLOCKED && !d.used;
+		return d.state == BarrowsDoors.State.UNLOCKED && !(eachDoor ? d.usedNear(leaf) : d.used);
 	}
 
+	/** You went through a door with this letter. */
 	boolean isUsed(int doorway)
 	{
 		return doorways[doorway].used;
 	}
 
-	/** You clicked Open on this doorway. It only counts once the door actually swings open. */
-	void clickedOpen(int doorway, int tick)
+	/** You went through the door this leaf belongs to. */
+	boolean isUsed(int doorway, WorldPoint leaf)
+	{
+		return doorways[doorway].usedNear(leaf);
+	}
+
+	/**
+	 * You clicked Open on this doorway. It only counts once the door actually swings open.
+	 *
+	 * @param tile the tile you clicked, or null if it isn't known
+	 */
+	void clickedOpen(int doorway, @Nullable WorldPoint tile, int tick)
 	{
 		pendingOpen = doorway;
+		pendingOpenTile = tile;
 		pendingOpenTick = tick;
 	}
 
@@ -91,14 +147,15 @@ final class DoorTracker
 	 *
 	 * @return true if this marked the doorway as used
 	 */
-	boolean leafGone(int doorway, int tick)
+	boolean leafGone(int doorway, WorldPoint leaf, int tick)
 	{
-		if (doorway != pendingOpen || tick - pendingOpenTick > OPEN_CLICK_TICKS)
+		if (doorway != pendingOpen || tick - pendingOpenTick > OPEN_CLICK_TICKS
+			|| (pendingOpenTile != null && !near(pendingOpenTile, leaf, CLICK_REACH)))
 		{
 			return false;
 		}
 		pendingOpen = -1;
-		doorways[doorway].used = true;
+		doorways[doorway].use(leaf);
 		return true;
 	}
 
@@ -119,7 +176,7 @@ final class DoorTracker
 			{
 				if (crosses(leaf.getKey(), leaf.getValue(), from, to))
 				{
-					doorways[i].used = true;
+					doorways[i].use(leaf.getKey());
 					if (pendingOpen == i)
 					{
 						pendingOpen = -1;
@@ -179,7 +236,7 @@ final class DoorTracker
 	{
 		for (Doorway d : doorways)
 		{
-			d.used = false;
+			d.forget();
 		}
 		pendingOpen = -1;
 	}
@@ -191,6 +248,14 @@ final class DoorTracker
 			doorways[i] = new Doorway();
 		}
 		pendingOpen = -1;
+	}
+
+	/** Same floor, and within this many tiles each way. */
+	static boolean near(WorldPoint a, WorldPoint b, int tiles)
+	{
+		return a.getPlane() == b.getPlane()
+			&& Math.abs(a.getX() - b.getX()) <= tiles
+			&& Math.abs(a.getY() - b.getY()) <= tiles;
 	}
 
 	/** The {@link WallObject#getOrientationA()} bits for straight walls. */
